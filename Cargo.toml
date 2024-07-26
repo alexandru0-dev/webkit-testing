@@ -4,5 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-channel = "2.3.1"
+axum = { version = "0.7.5", features = ["query"] }
 gtk4 = "0.9.0"
-webkit6 = "0.4.0"
+logging_timer = "1.1.1"
+serde = { version = "1.0.204", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1.10.0", features = ["v7"] }
+webkit6 = { version = "0.4.0", features = ["v2_44"] }

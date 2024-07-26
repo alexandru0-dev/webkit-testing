@@ -20,18 +20,14 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1721829463,
-        "narHash": "sha256-9kpshf8FwauS8oQSud2DE7ZjDxu74xQgZjSSYaKFLy0=",
-        "owner": "alexandru0-dev",
-        "repo": "nixpkgs",
-        "rev": "8a7845d4547efbf4d7f75ecfb7f11739440e19bb",
-        "type": "github"
+        "lastModified": 0,
+        "narHash": "sha256-Tybxt65eyOARf285hMHIJ2uul8SULjFZbT9ZaEeUnP8=",
+        "path": "/nix/store/afawjm6nv8m5aagkcqxlxgrr5qpyh6cm-source",
+        "type": "path"
       },
       "original": {
-        "owner": "alexandru0-dev",
-        "ref": "fix/webkitgtk_6_0",
-        "repo": "nixpkgs",
-        "type": "github"
+        "id": "nixpkgs",
+        "type": "indirect"
       }
     },
     "root": {

@@ -1,6 +1,7 @@
 {
   inputs = {
-    nixpkgs.url = "github:alexandru0-dev/nixpkgs/fix/webkitgtk_6_0";
+    # nixpkgs.url = "github:alexandru0-dev/nixpkgs/fix/webkitgtk_6_0";
+    # nixpkgs.url = "github:alexandru0-dev/nixpkgs/master";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -27,7 +28,7 @@
             buildInputs = with pkgs; [ 
               rust-bin.stable.latest.default
               gdk-pixbuf.dev
-              webkitgtk_6_0.dev
+              webkitgtk_6_0
               gtk4.dev
             ];
           };
