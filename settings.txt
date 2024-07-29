@@ -4,16 +4,17 @@ quality=high
 resolution-x=320
 resolution-y=320
 resolution=320
+
 output-file-format=pdf
 page-set=all
 
 [Page Setup]
-PPDName=A4
-DisplayName=A4
-Width=210
-Height=297
-MarginTop=6.35
-MarginBottom=14.224
-MarginLeft=6.35
-MarginRight=6.35
-Orientation=landscape
+#PPDName=A4
+#DisplayName=A4
+#Width=210
+#Height=297
+MarginTop=0
+MarginBottom=0
+MarginLeft=0
+MarginRight=0
+Orientation=portrait

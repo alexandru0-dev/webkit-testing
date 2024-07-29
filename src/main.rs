@@ -1,159 +1,175 @@
 use gtk4::{
-    gio::ApplicationFlags,
     glib::{self, Bytes},
     prelude::*,
     ApplicationWindow, PageSetup, PrintSettings, Window,
 };
 use webkit6::{prelude::*, LoadEvent, PrintOperation, WebView};
 
-use std::borrow::Borrow;
-use std::time::Instant;
 use uuid::Uuid;
 
 use axum::{
-    extract::State,
-    response::{IntoResponse, Response},
+    body::Body,
+    extract::Query,
+    http::{header, StatusCode},
+    response::{AppendHeaders, IntoResponse},
     routing::get,
-    Router, ServiceExt,
+    Router,
 };
 
-use axum::extract::Query;
+use tokio::{fs::File, sync::broadcast::Sender};
+use tokio_util::io::ReaderStream;
+
 use serde::Deserialize;
 use std::sync::OnceLock;
-use tokio::runtime;
-
-use std::sync::{Arc, Mutex};
-
-use tokio::sync::{mpsc, oneshot};
 
 #[derive(Deserialize)]
 struct QParam {
     id: u32,
 }
 
-fn runtime() -> &'static runtime::Runtime {
-    static RUNTIME: OnceLock<runtime::Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| {
-        runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_io()
-            .build()
-            .expect("Setting up tokio runtime needs to succeed.")
-    })
-}
-
-fn build_print(wv: &WebView, id: &u32) -> PrintOperation {
+fn build_print(wv: &WebView, id: Uuid) {
     let settings = PrintSettings::new();
-    settings.load_file("./settings.txt").unwrap();
-    let v7 = Uuid::now_v7();
+    settings.load_file("./settings.txt").unwrap_or_default();
     settings.set(
         "output-uri",
-        Some(&format!(
-            "file:///home/alex0/pdf_test/multiple_{}_{}.pdf",
-            id, v7
-        )),
+        Some(&format!("file:///tmp/wk_print_{}.pdf", id)),
     );
-    //settings.set_output_bin("./here.pdf");
-    //settings.set_output_bin(&format!("/home/alex0/multiple_{}.pdf", id));
-    //y.to_file("./test.pdf").unwrap();
 
-    let pagesetup = PageSetup::from_file("./settings.txt").unwrap();
-    PrintOperation::builder()
+    let pagesetup = PageSetup::from_file("./settings.txt").unwrap_or_default();
+    let print_op = PrintOperation::builder()
         .print_settings(&settings)
         .web_view(wv)
         .page_setup(&pagesetup)
-        .build()
+        .build();
+
+    let cln = wv.clone();
+
+    print_op.connect_finished(move |_print_op: &PrintOperation| {
+        sender().send(id).unwrap();
+        println!("{} saved successfully ", id);
+        cln.try_close();
+    });
+
+    print_op.print();
 }
 
-fn webview_load_changed(
-    _wv: &WebView,
-    event: LoadEvent,
-    mut tx: std::sync::MutexGuard<Option<oneshot::Sender<u32>>>,
-) {
+fn webview_load_changed(wv: &WebView, event: LoadEvent, id: Uuid) {
     match event {
-        LoadEvent::Finished => println!("finished"),
+        LoadEvent::Finished => {
+            build_print(wv, id);
+        }
         _ => (),
     }
 }
 
-const HTML: &[u8] = include_bytes!("./odyssey.html");
-//const ODYSSEY: Bytes = Bytes::from_static(HTML);
+const HTML: &str = include_str!("./assets/weasyprint-samples/poster/poster.html");
 
-async fn root(Query(param): Query<QParam>) -> &'static str {
-    let (print_tx, print_rx) = oneshot::channel::<u32>();
-    let dio: Arc<Mutex<Option<oneshot::Sender<u32>>>> = Arc::new(Mutex::new(Some(print_tx)));
+async fn root(Query(param): Query<QParam>) -> Result<impl IntoResponse, ()> {
+    let v7 = Uuid::now_v7();
 
-    gio::gtk4::gio::spawn_blocking(async move || {
-        let (window, webview) = build_webview().await;
-
-        webview.connect_print(|_webview, _op: &PrintOperation| true);
-
-        webview.connect_load_changed(move |a, b| {
-            let x = dio.lock().unwrap();
-            webview_load_changed(a, b, x);
-        });
-
-        webview.load_bytes(&Bytes::from_static(HTML), Some("text/html"), None, None);
-        //webview.load_html(&format!("<p>testing id: {}</p>", id), None);
-
-        webview.connect_close(glib::clone!(
-            #[weak]
-            window,
-            move |x| {
-                println!("closed {:?}", x);
-                //window
-                window.close();
-                window.destroy();
-            },
-        ));
+    glib::spawn_future(async move {
+        load_webview(&v7);
     });
-    println!("param.id : {}", param.id);
-    //state.tx.send(param.id).unwrap();
-    "Hello, World!"
+
+    let mut rx = sender().subscribe();
+
+    let mut a = rx.recv().await.unwrap();
+    while a != v7 {
+        a = rx.recv().await.unwrap();
+    }
+
+    let file = match File::open(format!("/tmp/wk_print_{}.pdf", v7)).await {
+        Ok(file) => file,
+        Err(err) => {
+            println!("Error: {:?}", err);
+            todo!();
+        }
+    };
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let headers = [
+        (header::CONTENT_TYPE, "application/pdf charset=utf-8"),
+        (
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"test.pdf\"",
+        ),
+    ];
+
+    Ok((headers, body))
 }
 
-fn main() {
-    let runtime = runtime();
-    runtime.spawn(async move {
-        let app = Router::new().route("/", get(root));
-        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-        axum::serve(listener, app).await.unwrap();
-    });
-
-    //let flags = ApplicationFlags::IS_LAUNCHER;
-
+fn gtk_main() {
     let app = gtk4::Application::new(Some("org.gnome.webkit6-rs.dio"), Default::default());
-
-    app.connect_activate(build_ui);
+    app.connect_activate(move |app: &gtk4::Application| {
+        build_ui(app);
+    });
     app.run();
 }
 
-enum Command {
-    A,
-    // Other commands can be added here
+fn sender() -> &'static Sender<Uuid> {
+    static RUNTIME: OnceLock<Sender<Uuid>> = OnceLock::new();
+    RUNTIME.get_or_init(|| Sender::new(100))
+}
+
+#[tokio::main]
+async fn main() {
+    std::thread::spawn(gtk_main);
+
+    let app = Router::new().route("/", get(root));
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 fn build_ui(app: &gtk4::Application) {
     let _ = ApplicationWindow::new(app);
 }
 
-async fn build_webview() -> (Window, WebView) {
-    let window = Window::new();
-    let settings = webkit6::Settings::builder().build();
-    settings.set_enable_javascript(false);
-    settings.set_enable_page_cache(false);
-    settings.set_enable_html5_database(false);
-    settings.set_enable_html5_local_storage(false);
-    settings.set_disable_web_security(false);
-    settings.set_enable_page_cache(false);
-    settings.set_enable_back_forward_navigation_gestures(false);
+fn load_webview(id: &Uuid) {
+    let (window, webview) = build_webview();
+    //window.show();
+    webview.connect_print(|_webview, _print_op| true);
+
+    let id_copy = id.clone();
+
+    webview.connect_load_changed(move |a, b| {
+        webview_load_changed(a, b, id_copy);
+    });
+
+    webview.load_html(
+        &HTML,
+        Some(
+            "file:///home/alex0/Repos/Personal/webkit-testing/src/assets/weasyprint-samples/poster/",
+        ),
+    );
+    webview.connect_close(glib::clone!(
+        #[weak]
+        window,
+        move |x| {
+            println!("closed {:?}", x);
+            window.destroy();
+        },
+    ));
+}
+
+fn build_webview() -> (Window, WebView) {
+    let settings = webkit6::Settings::builder()
+        .enable_javascript(true)
+        .enable_media(true)
+        .print_backgrounds(true)
+        .enable_page_cache(false)
+        .enable_html5_database(false)
+        .enable_html5_local_storage(false)
+        .disable_web_security(true)
+        .enable_back_forward_navigation_gestures(false)
+        .build();
 
     let webview = WebView::builder().settings(&settings).build();
-    //webview.set_settings(&settings);
-
-    //webview.settings().set_gtk_enable_accels(false);
-
-    window.set_child(Some(&webview));
+    let window = Window::builder()
+        .default_width(1920)
+        .default_height(1080)
+        .child(&webview)
+        .build();
 
     (window, webview)
 }
