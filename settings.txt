@@ -9,10 +9,10 @@ output-file-format=pdf
 page-set=all
 
 [Page Setup]
-#PPDName=A4
-#DisplayName=A4
-#Width=210
-#Height=297
+PPDName=Custom
+DisplayName=Custom
+Width=212
+Height=330
 MarginTop=0
 MarginBottom=0
 MarginLeft=0
