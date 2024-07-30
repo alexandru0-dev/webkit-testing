@@ -65,7 +65,7 @@ async fn root(Query(param): Query<QParam>) -> Result<impl IntoResponse, ()> {
 }
 
 fn gtk_main() {
-    let app = gtk4::Application::new(Some("org.gnome.webkit6-rs.dio"), Default::default());
+    let app = gtk4::Application::new(Some("org.gnome.webkit6-rs.print"), Default::default());
     app.connect_activate(move |app: &gtk4::Application| {
         build_ui(app);
     });
