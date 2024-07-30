@@ -27,42 +27,7 @@ struct QParam {
     id: u32,
 }
 
-fn build_print(wv: &WebView, id: Uuid) {
-    let settings = PrintSettings::new();
-    settings.load_file("./settings.txt").unwrap_or_default();
-    settings.set(
-        "output-uri",
-        Some(&format!("file:///tmp/wk_print_{}.pdf", id)),
-    );
-
-    let pagesetup = PageSetup::from_file("./settings.txt").unwrap_or_default();
-    let print_op = PrintOperation::builder()
-        .print_settings(&settings)
-        .web_view(wv)
-        .page_setup(&pagesetup)
-        .build();
-
-    let cln = wv.clone();
-
-    print_op.connect_finished(move |_print_op: &PrintOperation| {
-        sender().send(id).unwrap();
-        println!("{} saved successfully ", id);
-        cln.try_close();
-    });
-
-    print_op.print();
-}
-
-fn webview_load_changed(wv: &WebView, event: LoadEvent, id: Uuid) {
-    match event {
-        LoadEvent::Finished => {
-            build_print(wv, id);
-        }
-        _ => (),
-    }
-}
-
-const HTML: &str = include_str!("./assets/weasyprint-samples/poster/poster.html");
+const HTML: &str = include_str!("./assets/poster/poster.html");
 
 async fn root(Query(param): Query<QParam>) -> Result<impl IntoResponse, ()> {
     let v7 = Uuid::now_v7();
@@ -138,9 +103,10 @@ fn load_webview(id: &Uuid) {
 
     webview.load_html(
         &HTML,
-        Some(
-            "file:///home/alex0/Repos/Personal/webkit-testing/src/assets/weasyprint-samples/poster/",
-        ),
+        Some(&format!(
+            "file://{}/src/assets/poster/",
+            env!("CARGO_MANIFEST_DIR")
+        )),
     );
     webview.connect_close(glib::clone!(
         #[weak]
@@ -154,8 +120,8 @@ fn load_webview(id: &Uuid) {
 
 fn build_webview() -> (Window, WebView) {
     let settings = webkit6::Settings::builder()
-        .enable_javascript(true)
-        .enable_media(true)
+        .enable_javascript(false)
+        //.enable_media(true)
         .print_backgrounds(true)
         .enable_page_cache(false)
         .enable_html5_database(false)
@@ -165,11 +131,48 @@ fn build_webview() -> (Window, WebView) {
         .build();
 
     let webview = WebView::builder().settings(&settings).build();
-    let window = Window::builder()
-        .default_width(1920)
-        .default_height(1080)
-        .child(&webview)
-        .build();
+    let window = Window::builder().child(&webview).build();
 
     (window, webview)
+}
+
+fn build_print(wv: &WebView, id: Uuid) {
+    let settings = PrintSettings::new();
+    settings.load_file("./settings.txt").unwrap();
+    settings.set(
+        "output-uri",
+        Some(&format!("file:///tmp/wk_print_{}.pdf", id)),
+    );
+
+    let pagesetup = PageSetup::from_file("./settings.txt").unwrap();
+    let print_op = PrintOperation::builder()
+        .print_settings(&settings)
+        .web_view(wv)
+        .page_setup(&pagesetup)
+        .build();
+
+    let cln = wv.clone();
+
+    print_op.connect_finished(move |_print_op: &PrintOperation| {
+        match sender().send(id) {
+            Ok(_) => {
+                println!("{} saved successfully ", id);
+            }
+            Err(e) => {
+                println!("send failed: {:?}", e);
+            }
+        };
+        cln.try_close();
+    });
+
+    print_op.print();
+}
+
+fn webview_load_changed(wv: &WebView, event: LoadEvent, id: Uuid) {
+    match event {
+        LoadEvent::Finished => {
+            build_print(wv, id);
+        }
+        _ => (),
+    }
 }
